@@ -11,7 +11,7 @@
   },
   "applications": {
     "zotero": {
-      "id": "lyra@ysenarath.github.io",
+      "id": "finch@ysenarath.github.io",
       "update_url": "https://github.com/ysenarath/zotero-finch/releases/latest/download/updates.json",
       "strict_min_version": "7.0",
       "strict_max_version": "10.*"
