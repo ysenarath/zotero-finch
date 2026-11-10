@@ -53,14 +53,17 @@ var Finch = (() => {
       setPref(k, v);
     }
   }
-  // `claude --resume` finds a session by the directory it ran in (<config>/projects/<path with non-alphanumerics as ->),
-  // so each workspace's session folder is copied to match the workspace's new location.
-  async function migrateClaudeSessions(oldRoot, newRoot) {
+  // `claude --resume` finds a session by the directory it ran in: <config>/projects/<path with non-alphanumerics as ->
+  // holds <sessionId>.jsonl (the transcript) and <sessionId>/ (tool results, subagents) for each session run there.
+  function claudeProjectDir(cwd) {
     const projects = PathUtils.join(Services.env.get("CLAUDE_CONFIG_DIR") || PathUtils.join(HOME, ".claude"), "projects");
-    const enc = (p) => p.replace(/[^a-zA-Z0-9]/g, "-");
+    return PathUtils.join(projects, cwd.replace(/[^a-zA-Z0-9]/g, "-"));
+  }
+  // Each workspace's session folder is copied to match the workspace's new location.
+  async function migrateClaudeSessions(oldRoot, newRoot) {
     for (const dir of await IOUtils.getChildren(PathUtils.join(newRoot, "workspaces")).catch(() => [])) {
-      const src = PathUtils.join(projects, enc(PathUtils.join(oldRoot, "workspaces", PathUtils.filename(dir))));
-      const dst = PathUtils.join(projects, enc(dir));
+      const src = claudeProjectDir(PathUtils.join(oldRoot, "workspaces", PathUtils.filename(dir)));
+      const dst = claudeProjectDir(dir);
       if (await IOUtils.exists(src) && !(await IOUtils.exists(dst))) await IOUtils.copy(src, dst, { recursive: true });
     }
   }
@@ -1436,6 +1439,34 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
     return out.sort((a, b) => b.updated - a.updated);
   }
 
+  // Delete a saved chat: Finch's transcript and Claude Code's session for it. Tabs showing it get a fresh chat.
+  // Claude Code's session is kept while a fork in this workspace has not had its first turn yet, since that turn
+  // copies from it.
+  async function deleteChat(id, sessionId) {
+    const ws = workspaces.get(id);
+    if (!ws || !sessionId) throw new Error("Unknown chat");
+    const open = findOpenChat(sessionId);
+    if (open?.running) throw new Error("Wait for Finch to finish (or stop it) before deleting this chat.");
+    if (open) open.deleted = true; // closing it below must not save it again
+    for (const slot of slots.values()) if (slot.sessionId === sessionId || slot.session?.sessionId === sessionId) resetSlot(slot, ws.id);
+    const dir = PathUtils.join(ws.dir, "chats");
+    const file = PathUtils.join(dir, sessionId + ".json");
+    const existed = await IOUtils.exists(file);
+    await IOUtils.remove(file, { ignoreAbsent: true });
+    let forkSource = false;
+    for (const f of await IOUtils.getChildren(dir).catch(() => [])) {
+      if (!f.endsWith(".json")) continue;
+      try { if ((await IOUtils.readJSON(f)).forkFrom?.from === sessionId) { forkSource = true; break; } } catch (e) {}
+    }
+    if (!forkSource) {
+      const cc = claudeProjectDir(ws.dir);
+      await IOUtils.remove(PathUtils.join(cc, sessionId + ".jsonl"), { ignoreAbsent: true });
+      await IOUtils.remove(PathUtils.join(cc, sessionId), { recursive: true, ignoreAbsent: true });
+    }
+    if (existed) ws.chatCount = Math.max(0, (ws.chatCount || 0) - 1);
+    emit({ type: "workspaces" });
+  }
+
   // Open a saved chat in the given tab. A chat that is already open in another tab is shared, not loaded twice.
   async function resumeChat(id, sessionId, slot = currentSlot()) {
     const ws = workspaces.get(id);
@@ -1497,7 +1528,7 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
     }
     async save() {
       const first = this.entries.find((e) => e.kind === "user");
-      if (!this.sessionId || !first) return;
+      if (!this.sessionId || !first || this.deleted) return;
       if (!this.title) this.title = first.text.replace(/@\[([^\]]*)\]\([A-Z0-9]{8}\)/g, "$1").slice(0, 80);
       const dir = PathUtils.join(this.workspace.dir, "chats");
       await IOUtils.makeDirectory(dir, { ignoreExisting: true });
@@ -2255,7 +2286,7 @@ Read it (get_item, then get_fulltext with length 8000), read list_collections an
     getContext, getSession, newSession, forkChat, currentSlot, slotSession, slotWorkspace, attention,
     setSlotPage: (slot, page) => { slot.page = page || null; saveUiState(); },
     isChatOpen: (sessionId) => !!findOpenChat(sessionId), selectTab: (tabID) => mainTabs()?.select(tabID),
-    listWorkspaces, currentWorkspace, createWorkspace, renameWorkspace, archiveWorkspace, switchWorkspace, listChats, resumeChat,
+    listWorkspaces, currentWorkspace, createWorkspace, renameWorkspace, archiveWorkspace, switchWorkspace, listChats, resumeChat, deleteChat,
     proposals, decide, undoChange, changeLog, paperExplanations, explainCurrentSelection, showAnnotation, undoExplanation, terminalSetup, openZoteroURI, mentionSearch, resolveKeys, attachable, markdown: FinchMarkdown,
     librarySelection: () => { try { return Zotero.getMainWindow().ZoteroPane.getSelectedItems().filter((i) => i.libraryID === LIB() && i.isRegularItem()).slice(0, 20).map(brief); } catch (e) { return []; } },
     changesFile, clearSelection: () => { ctxState.selection = null; emit({ type: "context" }); },

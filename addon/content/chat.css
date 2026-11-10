@@ -131,6 +131,9 @@ body.managing #log, body.managing #review, body.managing footer { display: none 
 .ws-card .chat { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-sm); }
 .ws-card .chat .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-card .chat .d { color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; }
+.ws-card .chat .t { flex: 1; min-width: 0; }
+.ws-card .chat button { padding: 1px 8px; font-size: var(--fs-xs); }
+.ws-card .chat button.danger:hover { color: var(--bad); border-color: var(--bad); }
 #changes-list { display: flex; flex-direction: column; gap: 8px; }
 .ws-card.undone { opacity: .6; }
 .ws-card.undone .name { text-decoration: line-through; }

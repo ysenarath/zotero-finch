@@ -728,6 +728,27 @@
   };
   $("#new-ws-name").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#btn-create").click(); } };
 
+  // A workspace's saved chats (⋯ → Manage workspaces… → Chats), newest first.
+  async function drawChats(ws, box) {
+    box.textContent = "Loading…";
+    const cs = await Z.listChats(ws.id);
+    box.textContent = cs.length ? "" : "No saved chats yet.";
+    for (const c of cs) {
+      const row = el("div", "chat");
+      const t = el("span", "t"); t.textContent = c.title || "(untitled)"; t.title = c.title || "";
+      const d = el("span", "d"); d.textContent = `${c.messages} msg · ${fmtDate(c.updated)}`;
+      const here = session && session.sessionId === c.sessionId;
+      const resume = btn(Z.isChatOpen(c.sessionId) ? "Open here" : "Resume", async () => { await Z.resumeChat(ws.id, c.sessionId, slot); closePage("manage"); });
+      const del = btn("Delete", async () => {
+        if (!confirm(`Delete “${c.title || "(untitled)"}”?\n\nThis removes the chat and its Claude Code transcript. It can't be undone.`)) return;
+        try { await Z.deleteChat(ws.id, c.sessionId); } catch (e) { return alert(e.message); }
+        drawChats(ws, box);
+      }, "danger");
+      row.append(t, d, here ? el("span", "d", "open") : resume, del);
+      box.append(row);
+    }
+  }
+
   function drawManage() {
     const list = $("#ws-list");
     list.textContent = "";
@@ -739,21 +760,9 @@
       const btns = el("div", "btns");
       const chats = el("div", "chats"); chats.hidden = true;
       if (!ws.archived && ws.id !== cur?.id) btns.append(btn("Open", () => switchTo(ws.id), "primary"));
-      btns.append(btn("Chats", async () => {
+      btns.append(btn("Chats", () => {
         chats.hidden = !chats.hidden;
-        if (chats.hidden) return;
-        chats.textContent = "Loading…";
-        const cs = await Z.listChats(ws.id);
-        chats.textContent = cs.length ? "" : "No saved chats yet.";
-        for (const c of cs) {
-          const row = el("div", "chat");
-          const t = el("span", "t"); t.textContent = c.title || "(untitled)"; t.title = c.title || "";
-          const d = el("span", "d"); d.textContent = `${c.messages} msg · ${fmtDate(c.updated)}`;
-          const here = session && session.sessionId === c.sessionId;
-          const resume = btn(Z.isChatOpen(c.sessionId) ? "Open here" : "Resume", async () => { await Z.resumeChat(ws.id, c.sessionId, slot); closePage("manage"); });
-          row.append(t, d, here ? el("span", "d", "open") : resume);
-          chats.append(row);
-        }
+        if (!chats.hidden) drawChats(ws, chats);
       }));
       btns.append(btn("Rename", () => {
         const inp = el("input", "rename"); inp.value = ws.name;
