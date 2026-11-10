@@ -13,7 +13,7 @@ Download the latest `.xpi` from [Releases](https://github.com/ysenarath/zotero-f
 ## Build
 
 ```sh
-python3 scripts/build.py   # → build/zotero-finch-<version>.xpi and build/updates.json
+uv run scripts/build.py   # → build/zotero-finch-<version>.xpi and build/updates.json
 ```
 
 ## License

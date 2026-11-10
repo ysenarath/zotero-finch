@@ -1,9 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.9"
+# dependencies = []
+# ///
 """Package Finch as an installable .xpi.
 
-    python3 scripts/build.py                          # build/zotero-finch-<version>.xpi
-    python3 scripts/build.py --bump patch             # bump manifest version first (major|minor|patch)
-    python3 scripts/build.py --update-base URL        # self-hosting: .xpi and updates.json both live at URL
+    uv run scripts/build.py                          # build/zotero-finch-<version>.xpi
+    uv run scripts/build.py --bump patch             # bump manifest version first (major|minor|patch)
+    uv run scripts/build.py --update-base URL        # self-hosting: .xpi and updates.json both live at URL
 
 Also writes build/updates.json. By default it targets GitHub releases: the manifest's update_url is
 <homepage>/releases/latest/download/updates.json and each update_link is
