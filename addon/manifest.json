@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Finch",
+  "version": "0.1.0",
+  "description": "An AI research companion for Zotero, powered by Claude Code: chat beside your papers with live context, one-click explanations in the PDF reader, review-before-apply library edits, and an MCP endpoint for terminal/VS Code Claude Code.",
+  "author": "Yasas Senarath",
+  "homepage_url": "https://github.com/ysenarath/zotero-finch",
+  "icons": {
+    "48": "content/icon48.png",
+    "96": "content/icon96.png"
+  },
+  "applications": {
+    "zotero": {
+      "id": "lyra@ysenarath.github.io",
+      "update_url": "https://github.com/ysenarath/zotero-finch/releases/latest/download/updates.json",
+      "strict_min_version": "7.0",
+      "strict_max_version": "10.*"
+    }
+  }
+}

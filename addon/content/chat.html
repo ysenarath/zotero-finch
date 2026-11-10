@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html windowtype="zotero:finch" lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Finch — Zotero</title>
+  <link rel="stylesheet" href="chrome://finch/content/vendor/Temml-Local.css" />
+  <link rel="stylesheet" href="chrome://finch/content/chat.css" />
+  <script src="chrome://zotero/content/include.js"></script>
+</head>
+<body>
+  <header id="top">
+    <div class="ws">
+      <span id="state-dot" class="dot idle" title="Session state"></span>
+      <button id="ws-btn" class="ws-btn" title="Switch workspace"><span id="ws-name">General</span><span class="caret">▾</span></button>
+      <span id="model" class="muted"></span>
+    </div>
+    <div class="actions">
+      <button id="btn-new" class="ib" title="New chat in this workspace" aria-label="New chat"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10"/><path d="M3 8h10"/></svg></button>
+      <button id="btn-pop" class="ib" title="Pop out into a separate window" aria-label="Pop out"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 8 8"/><path d="M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/></svg></button>
+      <button id="btn-dock" class="ib" title="Dock in Zotero's right pane" aria-label="Dock"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 3.5h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z"/><path d="M10 3.5v9"/></svg></button>
+      <button id="btn-menu" class="ib" title="More" aria-label="More"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1.1"/><circle cx="8" cy="8" r="1.1"/><circle cx="12.5" cy="8" r="1.1"/></svg></button>
+    </div>
+    <div id="ws-menu" class="dropdown" hidden="hidden"></div>
+    <div id="menu" class="dropdown" hidden="hidden">
+      <label><input type="checkbox" id="opt-auto" /> Auto-process new papers</label>
+      <button id="btn-terminal">Copy terminal/VS Code setup command</button>
+      <button id="btn-folder">Open workspace folder</button>
+      <button id="btn-manage">Manage workspaces…</button>
+      <button id="btn-explanations">Explanations…</button>
+      <button id="btn-history">Changes…</button>
+      <button id="btn-undo">Undo last applied change</button>
+    </div>
+  </header>
+
+  <div id="attn" class="attn" hidden="hidden"></div>
+  <main id="log"></main>
+
+  <section id="manage" hidden="hidden">
+    <div class="manage-head">
+      <button id="btn-back" class="ib back" title="Back" aria-label="Back"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>
+      <span class="title">Workspaces</span>
+      <label class="muted"><input type="checkbox" id="opt-archived" /> Archived</label>
+    </div>
+    <div class="new-ws">
+      <input id="new-ws-name" placeholder="New workspace name" />
+      <button id="btn-create" class="primary">Create</button>
+    </div>
+    <div id="ws-list"></div>
+  </section>
+
+  <section id="changes" hidden="hidden">
+    <div class="manage-head">
+      <button id="btn-changes-back" class="ib back" title="Back" aria-label="Back"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>
+      <span class="title">Changes</span>
+      <button id="btn-changes-log" title="Open the raw log (changes.jsonl)">Log file</button>
+    </div>
+    <div id="changes-list"></div>
+  </section>
+
+  <section id="explanations" hidden="hidden">
+    <div class="manage-head">
+      <button id="btn-expl-back" class="ib back" title="Back" aria-label="Back"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8l4.5 4.5"/></svg></button>
+      <span class="title">Explanations</span>
+    </div>
+    <div id="expl-paper" class="muted"></div>
+    <div id="expl-list"></div>
+  </section>
+
+  <section id="review" hidden="hidden">
+    <div class="review-head">Waiting for your review</div>
+    <div id="review-list"></div>
+  </section>
+
+  <footer>
+    <div id="pop" class="pop" hidden="hidden"></div>
+    <div id="ctx" class="ctxline-bar" hidden="hidden"></div>
+    <div id="composer" class="composer">
+      <div id="chips" class="chips"></div>
+      <textarea id="input" rows="1" placeholder="Ask Finch…"></textarea>
+      <div class="toolbar">
+        <button id="btn-at" class="tb" title="Mention a paper or collection (@)" aria-label="Mention"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.4"/><path d="M10.4 5.6v3.1a1.7 1.7 0 0 0 3.4 0V8a5.8 5.8 0 1 0-2.3 4.6"/></svg></button>
+        <button id="btn-attach" class="tb" title="Attach the items selected in the library" aria-label="Attach selected items"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M13 7.6 8.2 12.4a3.1 3.1 0 0 1-4.4-4.4l5.3-5.3a2 2 0 0 1 2.9 2.9L6.7 10.9a.95.95 0 0 1-1.4-1.4l4.6-4.6"/></svg></button>
+        <button id="btn-slash" class="tb" title="Quick commands (/)" aria-label="Quick commands"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M9.4 5.2 6.6 10.8"/></svg></button>
+        <span id="hint" class="hint"></span>
+        <button id="btn-send" class="send" title="Send (Enter)" aria-label="Send" disabled="disabled"></button>
+      </div>
+    </div>
+  </footer>
+  <script src="chrome://finch/content/vendor/temml.min.js"></script>
+  <script src="chrome://finch/content/chat.js"></script>
+</body>
+</html>

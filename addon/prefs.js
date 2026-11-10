@@ -1,0 +1,12 @@
+pref("extensions.finch.claudePath", "");
+pref("extensions.finch.model", "");
+pref("extensions.finch.workspaceRoot", "");
+pref("extensions.finch.token", "");
+pref("extensions.finch.autoProcess", false);
+pref("extensions.finch.autoProcessDelaySec", 45);
+pref("extensions.finch.proposalTimeoutMin", 15);
+pref("extensions.finch.explainModel", "haiku");
+pref("extensions.finch.shortcut", "accel+alt+L");
+pref("extensions.finch.sidebarOpen", false);
+pref("extensions.finch.openalexKey", "");
+pref("extensions.finch.semanticScholarKey", "");
