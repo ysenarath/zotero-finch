@@ -68,6 +68,19 @@
     return bits.join(" · ");
   }
 
+  // Shown under the last reply of each turn: continue in a new chat from this point (see core forkChat).
+  function forkButton(e) {
+    const b = el("button", "fork");
+    b.textContent = "Fork from here";
+    b.title = "Continue in a new chat from this point. This chat is kept, and later messages are left out of the new one.";
+    b.onclick = () => fork(e.id);
+    return b;
+  }
+  async function fork(entryId = null) {
+    try { await Z.forkChat(slot, session, entryId); input.focus(); }
+    catch (err) { notice(err.message); }
+  }
+
   function renderEntry(e) {
     let node = entryEls.get(e.id);
     const fresh = !node;
@@ -87,6 +100,7 @@
         node.innerHTML = md(e.text);
         renderMath(node);
         node.classList.toggle("streaming", !!e.streaming);
+        if (e.forkAt && !e.streaming) node.append(forkButton(e));
         break;
       case "tool":
         node = node || el("div", "tool");
@@ -348,10 +362,12 @@
       s.add({ kind: "status", text: "New chat started. The previous one is saved: ⋯ → Manage workspaces… → Chats." });
       input.focus();
     },
+    fork: () => fork(),
   };
   ACTIONS.clear = ACTIONS.new; // hidden alias for Claude Code muscle memory; not listed in QUICK
   const QUICK = [
     { cmd: "new", label: "Start a fresh chat (the current one is saved)", action: "new" },
+    { cmd: "fork", label: "Continue in a copy of this chat (or use “Fork from here” on an earlier reply)", action: "fork" },
     { cmd: "compact", label: "Summarize the chat so far to save tokens (optionally add what to keep)", text: "/compact " },
     { cmd: "summarize", label: "Summarize this paper", text: "Summarize this paper: the problem, the approach, key results, and limitations." },
     { cmd: "explain", label: "Explain the selection (adds it to the PDF; see ⋯ → Explanations…)", action: "explain" },

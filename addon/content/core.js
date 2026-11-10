@@ -1457,7 +1457,7 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
       try {
         const c = await IOUtils.readJSON(PathUtils.join(ws.dir, "chats", sessionId + ".json"));
         const entries = (c.entries || []).map((e) => (e.kind === "permission" && e.status === "pending" ? { ...e, status: "expired" } : e));
-        return findOpenChat(sessionId) || new Session(ws, { resumeId: sessionId, entries, title: c.title, created: c.created });
+        return findOpenChat(sessionId) || new Session(ws, { resumeId: sessionId, entries, title: c.title, created: c.created, forkFrom: c.forkFrom });
       } catch (e) { return null; }
       finally { loadingChats.delete(sessionId); }
     })();
@@ -1468,14 +1468,19 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
   // A chat. It has no process of its own between turns: each turn starts `claude -p` (with --resume once the
   // chat has a session id), writes the message, reads until the `result`, then closes stdin so the process exits.
   // Messages sent while a turn is running wait in `queue` and go to the same process when the turn ends.
+  // Fork points: each user entry gets `turn` (its turn number) when it is actually sent, and at the end of a turn
+  // the last reply entry gets `forkAt` (the uuid of Claude Code's last assistant message) and `forkTurn`.
+  // A fork that has not had its first turn yet has `forkFrom` {from, at}: see forkChat.
   class Session {
-    constructor(workspace, { resumeId, entries, title, created } = {}) {
+    constructor(workspace, { resumeId, sessionId, forkFrom, entries, title, created } = {}) {
       this.workspace = workspace;
       this.key = Zotero.Utilities.randomString(12); // sent with this chat's tool calls (X-Finch-Chat)
       this.entries = (entries || []).map((e, i) => ({ ...e, id: i, streaming: false }));
       this.state = "idle";
-      this.sessionId = resumeId || null;
+      this.sessionId = resumeId || sessionId || null;
       this.resumeId = resumeId || null;
+      this.forkFrom = forkFrom || null;
+      this.turnSeq = Math.max(0, ...this.entries.map((e) => e.turn || 0));
       this.title = title || null;
       this.created = created || Date.now();
       this.pendingPerms = new Map();
@@ -1498,14 +1503,15 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
       await IOUtils.makeDirectory(dir, { ignoreExisting: true });
       const entries = this.entries.filter((e) => e.kind !== "permission" || e.status !== "pending").map(({ id, streaming, queued, ...e }) => e);
       await IOUtils.writeJSON(PathUtils.join(dir, this.sessionId + ".json"),
-        { sessionId: this.sessionId, workspaceId: this.workspace.id, title: this.title, created: this.created, updated: Date.now(), model: this.model, entries });
+        { sessionId: this.sessionId, workspaceId: this.workspace.id, title: this.title, created: this.created, updated: Date.now(), model: this.model,
+          ...(this.forkFrom ? { forkFrom: this.forkFrom } : {}), entries });
       if (this._oldId) { await IOUtils.remove(PathUtils.join(dir, this._oldId + ".json"), { ignoreAbsent: true }); this._oldId = null; }
       if (!this._counted) { this._counted = true; if (!this.resumeId) { this.workspace.chatCount = (this.workspace.chatCount || 0) + 1; emit({ type: "workspaces" }); } }
     }
     setState(s) { this.state = s; emit({ type: "state", session: this }); }
 
     // Start a process for one turn and give it `payload` (a stream-json user message).
-    async runTurn(payload) {
+    async runTurn(payload, entry) {
       this.running = true;
       this.setState("busy");
       let proc;
@@ -1514,7 +1520,11 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
         const args = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
           "--permission-prompt-tool", "stdio", "--mcp-config", mcpConfig("chat", this.key), "--strict-mcp-config", "--allowedTools", "mcp__zotero",
           "--append-system-prompt", SYSTEM, ...modelArgs()];
-        if (this.sessionId) args.push("--resume", this.sessionId);
+        // A fork's first turn copies its source into a new session with the id chosen in forkChat, cut off after
+        // the fork point (--resume-session-at), so the model never sees what was said later in the source.
+        if (this.forkFrom) args.push("--resume", this.forkFrom.from, "--fork-session", "--session-id", this.sessionId,
+          ...(this.forkFrom.at ? ["--resume-session-at", this.forkFrom.at] : []));
+        else if (this.sessionId) args.push("--resume", this.sessionId);
         proc = this.proc = await Subprocess.call({ command: await claudePath(), arguments: args, workdir: this.workspace.dir, environment: env(), environmentAppend: true, stderr: "pipe" });
       } catch (e) {
         this.proc = null; this.running = false;
@@ -1525,7 +1535,7 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
       }
       this.turnDone = false;
       const stderr = this.readErr(proc);
-      this.write(payload);
+      this.beginTurn(payload, entry);
       await this.readLoop(proc);
       const code = await proc.wait().then((r) => r.exitCode).catch(() => -1);
       const err = this.turnDone ? "" : await stderr;
@@ -1580,6 +1590,7 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
         return;
       }
       if (m.type === "system" && m.subtype === "init") {
+        if (this.forkFrom) this.forkFrom = null; // the fork now has its own session
         if (this.sessionId && m.session_id !== this.sessionId) this._oldId = this.sessionId;
         this.sessionId = m.session_id; this.model = m.model; emit({ type: "state", session: this }); return;
       }
@@ -1593,6 +1604,7 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
         return;
       }
       if (m.type === "assistant") {
+        if (m.uuid && !m.parent_tool_use_id) this.turnUuid = m.uuid; // not a subagent's message
         for (const b of m.message?.content || []) {
           if (b.type === "text") {
             if (this.live) { this.live.text = b.text; this.live.streaming = false; this.update(this.live); this.live = null; }
@@ -1630,11 +1642,12 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
         if (this._stopping) this.add({ kind: "status", text: "Stopped." });
         else if (m.is_error || m.subtype !== "success") this.add({ kind: "status", text: `Turn ended: ${m.subtype}${m.result ? " — " + String(m.result).slice(0, 300) : ""}` });
         this._stopping = false;
+        this.markForkPoint();
         // The next queued message goes to this same process; otherwise let it exit.
         const next = this.queue.shift();
         if (next) {
           if (next.entry) { next.entry.queued = false; this.update(next.entry); }
-          this.write(next.payload);
+          this.beginTurn(next.payload, next.entry);
         } else {
           this.turnDone = true;
           try { this.proc?.stdin.close(); } catch (e) {}
@@ -1644,13 +1657,30 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
 
     write(obj) { return this.proc?.stdin.write(JSON.stringify(obj) + "\n"); }
 
+    // Write a user message to the running process as a new turn (`entry` is its chat entry; none for /compact).
+    beginTurn(payload, entry) {
+      this.turnUuid = null;
+      this.turnStart = this.entries.length;
+      this.turnNo = ++this.turnSeq;
+      if (entry) { entry.turn = this.turnNo; this.scheduleSave(); }
+      this.write(payload);
+    }
+    // At the end of a turn: its last reply (text, else a tool call) becomes a point the chat can be forked from.
+    markForkPoint() {
+      if (!this.turnUuid) return;
+      const turn = this.entries.slice(this.turnStart);
+      const e = turn.findLast((x) => x.kind === "assistant") || turn.findLast((x) => x.kind === "tool");
+      if (e) { e.forkAt = this.turnUuid; e.forkTurn = this.turnNo; this.update(e); }
+      this.turnUuid = null;
+    }
+
     // Send now, or after the running turn if there is one.
     submit(payload, entry) {
       if (this.running) {
         if (entry) { entry.queued = true; this.update(entry); }
         this.queue.push({ payload, entry });
       } else {
-        this.runTurn(payload);
+        this.runTurn(payload, entry);
       }
     }
 
@@ -1820,6 +1850,36 @@ Link items in replies as [Title](zotero://select/library/items/KEY) and PDF page
     setSlotSession(slot, s);
     return s;
   }
+  // A new chat in the same workspace that continues `src` from the end of the turn that produced entry `entryId`
+  // (from its end when null), shown in this tab; `src` stays saved and resumable. The new session id is chosen
+  // here so the fork is saved at once; Claude Code makes the copy on its first turn (see runTurn), cut off at the
+  // fork point, so neither the model nor the transcript sees anything said after it.
+  async function forkChat(slot, src, entryId = null) {
+    if (!src) throw new Error("Nothing to fork yet.");
+    if (src.running) throw new Error("Wait for Finch to finish (or stop it) before forking.");
+    // A fork that has not had its first turn yet has no session of its own: fork its source instead.
+    const base = src.forkFrom || (src.sessionId && { from: src.sessionId, at: null });
+    if (!base || !src.entries.some((e) => e.kind === "user" && !e.unsent)) throw new Error("Nothing to fork yet.");
+    let upto = src.entries.length - 1, at = base.at, turn = Infinity;
+    if (entryId !== null) {
+      const e = src.entries[entryId];
+      if (!e?.forkAt) throw new Error("This chat can't be forked from that message.");
+      upto = entryId; at = e.forkAt; turn = e.forkTurn;
+    }
+    // Messages typed while that turn ran (queued, sent in a later turn) sit above its reply: leave them out.
+    const entries = src.entries.slice(0, upto + 1)
+      .filter((e) => !(e.kind === "user" && (e.unsent || e.queued || e.turn > turn)))
+      .map(({ id, streaming, queued, ...e }) => e);
+    const name = (src.title || "Chat").replace(/ \(fork\)$/, "");
+    const s = new Session(src.workspace, { entries, title: name + " (fork)", sessionId: Services.uuid.generateUUID().toString().slice(1, -1), forkFrom: { from: base.from, at } });
+    s.add({ kind: "status", divider: true, text: `Forked from “${name}”. Later messages there are not part of this chat.` });
+    src.workspace.lastUsed = Date.now();
+    writeWorkspace(src.workspace).catch((e) => Zotero.logError(e));
+    setSlotSession(slot, s);
+    await s.save();
+    return s;
+  }
+
   async function getSession(slot = currentSlot()) {
     return (await slotSession(slot)) || newSession(slot);
   }
@@ -2192,7 +2252,7 @@ Read it (get_item, then get_fulltext with length 8000), read list_collections an
     startup, shutdown, onMainWindowLoad, onMainWindowUnload,
     // UI API
     on: (fn) => listeners.add(fn), off: (fn) => listeners.delete(fn),
-    getContext, getSession, newSession, currentSlot, slotSession, slotWorkspace, attention,
+    getContext, getSession, newSession, forkChat, currentSlot, slotSession, slotWorkspace, attention,
     setSlotPage: (slot, page) => { slot.page = page || null; saveUiState(); },
     isChatOpen: (sessionId) => !!findOpenChat(sessionId), selectTab: (tabID) => mainTabs()?.select(tabID),
     listWorkspaces, currentWorkspace, createWorkspace, renameWorkspace, archiveWorkspace, switchWorkspace, listChats, resumeChat,

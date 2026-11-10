@@ -63,6 +63,9 @@ math { font-family: "STIX Two Math", "Cambria Math", "Noto Sans Math", math; fon
 .msg.assistant th { background: var(--code); font-weight: 600; }
 .msg.assistant tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--code) 50%, transparent); }
 .msg.assistant.streaming::after { content: "▍"; color: var(--accent); }
+.msg.assistant .fork { display: block; margin: 4px 0 0 auto; padding: 0 8px; font-size: var(--fs-xs); color: var(--muted); background: none; border-color: transparent; opacity: 0; }
+.msg.assistant:hover .fork, .msg.assistant .fork:focus-visible { opacity: 1; }
+.msg.assistant .fork:hover { color: var(--fg); }
 a[data-href] { color: var(--accent); cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; }
 .mention { background: var(--code); border-radius: 4px; padding: 0 4px; }
 .tool { font: var(--fs-xs) "SF Mono", ui-monospace, Menlo, monospace; color: var(--muted); padding-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
