@@ -343,14 +343,15 @@
       try { Z.explainCurrentSelection(); }
       catch (e) { notice(e.message); }
     },
-    clear: async () => {
+    new: async () => {
       const s = await Z.newSession(slot);
       s.add({ kind: "status", text: "New chat started. The previous one is saved: ⋯ → Manage workspaces… → Chats." });
       input.focus();
     },
   };
+  ACTIONS.clear = ACTIONS.new; // hidden alias for Claude Code muscle memory; not listed in QUICK
   const QUICK = [
-    { cmd: "clear", label: "Start a fresh chat (the current one is saved)", action: "clear" },
+    { cmd: "new", label: "Start a fresh chat (the current one is saved)", action: "new" },
     { cmd: "compact", label: "Summarize the chat so far to save tokens (optionally add what to keep)", text: "/compact " },
     { cmd: "summarize", label: "Summarize this paper", text: "Summarize this paper: the problem, the approach, key results, and limitations." },
     { cmd: "explain", label: "Explain the selection (adds it to the PDF; see ⋯ → Explanations…)", action: "explain" },
